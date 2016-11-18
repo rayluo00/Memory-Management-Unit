@@ -1,0 +1,192 @@
+1 Introduction
+
+The purpose of this assignment is to understand how a CPU or, more accurately,
+Memory Management Unit (MMU) translates virtual addresses to physical addresses.
+In this assignment, you will write the MMU logic for a small CPU that needs
+address resolution for two different addressing-modes and page-level permission
+enforcement.
+
+2 'Hardware'
+
+Most modern systems use a 4k or larger page.  This system, however, uses a
+rather small page, it is only 256 bytes.  Page offsets are only eight-bits or a
+single byte.  Virtual addresses with this page-size are easier to decompose.
+
+For compatibility, our CPU supports a 16-bit, legacy mode.  Addresses in this
+mode are, you guessed it, 16-bits long and they do not use any permission bits.
+Since there are only 256 pages in the page table, the page table register (CR3)
+points directly to the table.  
+
+Full, 32-bit addressing mode is more complicated.  There are 16M pages!  Rather
+than pointing directly at the page table, full-mode uses a three-level page
+tree.  That is, CR3 points at a root table, which points at a directory, which
+points at a page table.  Of course some of these pointers are invalid.  
+
+Finding the page table entry and resolving the physical address is only the
+first step.  In full-mode, pages have permissions.  That is, writing to a
+read-only page generates a fault.  You must verify that the process is accessing
+the pages for an acceptable use.  (Remember the executable stack from the Buffer
+projects?)  
+
+Additionally, some pages are privileged.  These pages are reserved for the
+O.S. and can only be accessed when the CPU is in the Supervisory state.  The
+current state of the CPU is indicated by the SUPER register.  Okay, usually the
+processor state is a bit embedded in some other register, but this will work for
+our purposes.  If a user process tries to access a privileged-paged, then the
+MMU should return a fault.  Equally, if the O.S., in the supervisory state,
+tries to execute a non-executable page, the MMU should also return a fault.
+
+Finally, the MMU has a small Translation Lookaside Buffer (TLB).  Rather than
+access memory three or four times for each resolution, the MMU can store
+recently used page table entries in the TLB.  The TLB circuitry is already
+developed.  You can access the TLB via the tlb header file: tlb.h.  
+
+3 MMU Results
+
+There are three possible results from resolving a virtual address: success,
+page-fault, and protection-fault.  In each case, a different type of data is
+returned from the resolution function:
+
+  . Success: the physical address (a void*)
+  . Page Fault: the virtual page number (an integer)
+  . Protection Fault: a copy of the PTE (not really and integer, but whatever)
+
+This is a classic OR-type.  The following discriminanted union captures this
+behavior:
+
+  typedef struct result_st {
+     enum {SUCCESS, PAGEFAULT,
+                PROTFAULT, NOTIMPLEMENTED} status;
+     union {
+         void* pa;
+         unsigned vpn;
+         unsigned pte;
+     } value;
+  
+  } result_t;
+  
+The result_t is a structure with two elements: an enumeration and a union.  The
+status is the discriminant, it indicates which part of the union is valid.  The
+additional status NOTIMPLEMENTED indicates that the resolution function is
+incomplete.  
+
+
+I strongly suggest helper functions that create the different variations of
+result_ts.  For example, the following function will create a successful
+result_t:
+
+  static
+  result_t success(void* pa) {
+  
+     result_t res;
+     res.status=SUCCESS;
+     res.value.pa = pa;
+     return res;
+  }
+  
+Consider the readability of the following return-statement:
+
+   return success(pa);
+
+4 Page Table Entry
+
+    31    30..28 27..............................................4 3 2 1 0
+   +-----+------+-------------------------------------------------+-+-+-+-+
+   |Valid|unused| 24-bit Physical Page Number                     |P|R|W|X|
+   +-----+------+-------------------------------------------------+-+-+-+-+
+                           Figure 1: Page Table Entry
+
+
+The Page Table Entry(PTE) is a 32-bit packed structure illustrated in Figure 1.
+The bits labeled R, W, and X are set (i.e., 1) to indicate the page is readable,
+writable, and executable respectively.  The bit labeled P indicates that the CPU
+must in supervisory-mode to access the page.  The next 24-bits are the Physical
+Page Number(PPN) of the page.  The bit labeled V is set (i.e., 1) when the PTE
+is valid. If the entry is invalid, V = 0, then the remaining bits should be
+ignored.
+
+It could be helpful to define helper-function to accesses the different parts of
+a PTE. For example, the following function could make your code more readable:
+
+  static
+  int is_valid (unsigned pte) {
+  
+       return 1 & (pte >> 31);
+  }
+  
+5 Translation Lookaside Buffer
+
+The TLB is a set-associative cache.  This means that a cached PTE is identified
+by a set number and a tag.  The index and tag are parts of the virtual page
+number (VPN).  Basically, the virtual address without the page offset.  Since we
+want to use as much of the TLB as possible and locality of reference says that
+that the program will use memory in clumps, the index is the low-order byte of
+the VPN.  This is bits 8 through 15 of the virtual address.  Using the low-order
+byte means that two adjacent PTEs are stored in different TLB sets.  
+
+Searching the TLB is straight forward.  Call tlb_search with the set index, tag,
+and the address of a page table entry variable.  This last argument is where the
+tlb will store the PTE if it is found.  The function returns success if a
+matching PTE was found, or it returns failure if one is not.  The following is
+one possible way of calling tlb_search:
+
+  if (tlb_search(tlb_index, tlb_tag, &pte)) {
+     /* pte is initialized */
+  } 
+  else {
+     /* pte is uninitialized */
+  }
+
+If the search fails, but a valid entry exists in the page table, then it should
+be added to the TLB.  tlb_add is the only other Tlb function you need.  Assuming
+that the variable pte stores a valid entry, the following would add it to the
+TLB:
+
+  tlb_add(tlb_index, tlb_tag, pte);
+
+Notice that tlb_search takes the address of pte and tlb_search takes the value.
+For tlb_search, pte is an output argument.  For tlb_add, pte is an input
+argument.  
+
+5 Infrastructure
+
+The test-framework is built in a library on the school's Linux system.  The
+provided Makefile will link in this library. The test program checks legacy-mode
+correctness, full-mode correctness, permission enforcement, and TLB usage.  It
+reports errors if you return a result it didn't expect.
+
+6 Assignment Details
+
+I strongly suggest implementing your solution incrementally. Start with
+legacy-mod. Make sure that it is correct before moving on to the other three
+parts. Then implement 32-bit address resolution before you tackle protection
+enforcement.
+
+Evaluation
+ . Legacy-mode: Correctly implementing legacy-mode address resolution is worth 5 points.
+ . Full-mode resolution: Correctly resolving 32-bit address is worth 10 points.
+ . Protection enforcement: Correctly enforcing permission bits, including
+   Supervisor-mode, is worth 5 points.
+ . TLB: Correctly using the TLB is worth 5 points.
+ . Style: Up to 5 additional points are awarded for coding style (e.g.,
+   organization, comments, symbol names, etc.).
+
+Coding Rules
+
+You may write any code you want, as long as it satisfies the following:
+ . You must write ANSI C. You may not use any embedded assembly language statements.
+ . You can only modify code in mmu.c.
+ . It must not interfere with the testing infrastructure.
+
+7 Hand In Instructions
+
+Submit your work via git.
+
+
+Outcomes:
+   Become comfortable with C's union type 
+   Understand how hardware uses bit-fields
+   Understand Memory Management Unit (MMU)
+   Understand how the TLB helps the MMU
+
+  
