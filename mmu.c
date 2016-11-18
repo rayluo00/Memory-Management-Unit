@@ -32,24 +32,21 @@ int tlb_add (unsigned char index, unsigned short tag, unsigned int pte);
 /*
   Retrieve the virtual page number from a 16-bit adress.
  */
-static
-unsigned int vpn(unsigned int virtAdress){
+static unsigned int vpn(unsigned int virtAdress){
   return (virtAdress >> 8) & 0xFFFFFF;
 }
 
 /*
   Check if the page table entry is valid or invalid for either a SUCCESS or Page Fault.
  */
-static
-int check_pte_valid(unsigned int pageTabEnt){ 
+static int check_pte_valid(unsigned int pageTabEnt){ 
   return ((pageTabEnt >> 31) & 1);
 }
 
 /*
   Make a address for the page table entry and virtual address, return the address of page.
  */
-static
-void* makeAddress(unsigned int pageTabEnt, unsigned int virtAddress){
+static void* makeAddress(unsigned int pageTabEnt, unsigned int virtAddress){
   unsigned int phyPageNum = ((pageTabEnt >> 4) & 0xFFFFFF);
   unsigned int pageOff = virtAddress & 0xFF;
   return (void*)((phyPageNum << 8) | pageOff);
@@ -114,44 +111,37 @@ result_t mmu_legacy(unsigned short va)
  */
 
 /*Check for directory validity.*/
-static
-unsigned int valid_dir(unsigned int dirAddress){
+static unsigned int valid_dir(unsigned int dirAddress){
   return dirAddress & 1;
 }
 
 /*Obtain the directory index from root directory pointer.*/
-static
-unsigned int get_dirI(unsigned int virtalAddress){
+static unsigned int get_dirI(unsigned int virtalAddress){
   return (virtalAddress >> 24) & 0xFF;
 }
 
 /*Get the page index from the directory pointer.*/
-static
-unsigned int get_ptIndex(unsigned int virtalAddress){
+static unsigned int get_ptIndex(unsigned int virtalAddress){
   return (virtalAddress >> 16) & 0xFF;
 }
 
 /*Get the page index of the page table entry.*/
-static
-unsigned int get_pteIndex(unsigned int virtalAddress){
+static unsigned int get_pteIndex(unsigned int virtalAddress){
   return (virtalAddress >> 8) & 0xFF;
 }
 
 /*Get the address from the pointer directories.*/
-static
-unsigned int get_addr(unsigned int virtalAddress){
+static unsigned int get_addr(unsigned int virtalAddress){
   return (virtalAddress >> 4) << 4;
 }
 
 /*Check if the page has the execution bit set to 1.*/
-static
-int is_exec(unsigned int page){
+static int is_exec(unsigned int page){
     return (page & 1);
 }
 
 /*Check if the page is read only and not writable.*/
-static
-int read_only(unsigned int page){
+static int read_only(unsigned int page){
   if((page & 0x6) == 0x4) {
     return 1;
   }
@@ -159,51 +149,44 @@ int read_only(unsigned int page){
 }
 
 /*Check if the page has the permission bit set to 1.*/
-static
-int has_perm(unsigned int page){
+static int has_perm(unsigned int page){
   return ((page >> 3) & 1);
 }
 
 /*Get the TLB index from the virtual page number.*/
-static
-unsigned int tlbIndex(unsigned int vpn){
+static unsigned int tlbIndex(unsigned int vpn){
   return ((vpn) & 0xFF);
 }
 
 /*Get the TLB tag from the virtual page number*/
-static
-unsigned int tlbTag(unsigned int vpn){
+static unsigned int tlbTag(unsigned int vpn){
   return ((vpn >> 8) & 0xFFFF);
 }
 
 
 /* Call functions for the specific faults or success.*/
-static
-result_t callProtFault(result_t result, unsigned int page){
+static result_t callProtFault(result_t result, unsigned int page){
   result.status = PROTFAULT;
   result.value.pte = page;
   return result;
 }
 
 /*If the page is invalid, call a page fault.*/
-static
-result_t callPageFault(result_t result, unsigned va){
+static result_t callPageFault(result_t result, unsigned va){
   result.status = PAGEFAULT;
   result.value.vpn = vpn(va);
   return result;
 }
 
 /*Page was found and valid, return the result as successful.*/
-static
-result_t callSuccess(result_t result, unsigned int va, unsigned int page){
+static result_t callSuccess(result_t result, unsigned int va, unsigned int page){
   result.status = SUCCESS;
   result.value.pa = makeAddress(page, va);
   return result;
 }
 
 /*Check the TLB page for protection faults*/
-static
-int call_faults(access_t use, unsigned int page){
+static int call_faults(access_t use, unsigned int page){
   if(!SUPER && has_perm(page)){
     return 1;	  
   }
